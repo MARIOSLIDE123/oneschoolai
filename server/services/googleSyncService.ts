@@ -8,13 +8,16 @@ export interface GoogleSyncConfig {
   driveFolderId?: string;
 }
 
+const DEFAULT_WEBHOOK_URL = 'https://script.google.com/macros/s/AKfycbxedYPar2M_fUpu2jmW5c_C9uzvnEQgQEWN9XAk8DfA4ynW6Qgp8UnW0AKUd7EAOTS1/exec';
+const DEFAULT_FOLDER_ID = '1gMUDrdc5-cCC20Hji3H7uWS47jiNxi_A';
+
 class GoogleSyncService {
   private getWebHookUrl(): string {
-    return process.env.GOOGLE_APPS_SCRIPT_URL || '';
+    return process.env.GOOGLE_APPS_SCRIPT_URL || DEFAULT_WEBHOOK_URL;
   }
 
   private getDriveFolderId(): string {
-    return process.env.GOOGLE_DRIVE_FOLDER_ID || '';
+    return process.env.GOOGLE_DRIVE_FOLDER_ID || DEFAULT_FOLDER_ID;
   }
 
   public getConfig(): GoogleSyncConfig {
