@@ -1,17 +1,46 @@
 /**
  * =========================================================================
- * ONESCHOOL AI - GOOGLE APPS SCRIPT CONNECTOR
- * Đồng bộ dữ liệu Nhà trường lên Google Sheets & Lưu trữ tài liệu trên Google Drive
+ * ONESCHOOL AI - GOOGLE APPS SCRIPT CONNECTOR (BẢN TỰ ĐỘNG CHỐNG LỖI)
  * Trường Tiểu học Nguyễn Trãi - Năm học 2026-2027
  * =========================================================================
  */
 
+// NẾU BẠN TẠO SCRIPT TỪ TRANG WEB script.google.com (Script độc lập):
+// Hãy dán ID hoặc URL của Google Sheet vào bên dưới (giữa 2 dấu ngoặc kép).
+// Ví dụ: var SPREADSHEET_ID = "1a2b3c4d5e6f7g8h...";
+// NẾU BẠN MỞ SCRIPT TỪ TIỆN ÍCH MỞ RỘNG (Extensions) TRONG GOOGLE SHEET: Để trống "" là được.
+var SPREADSHEET_ID = "";
+
 /**
- * Xử lý GET request (Kiểm tra trạng thái kết nối Web App)
+ * HÀM KIỂM TRA & CẤP QUYỀN (CHẠY THỬ NGHIỆM TRÊN THANH CÔNG CỤ):
+ * Khi ở trong trình soạn thảo Apps Script, bạn chọn hàm "testRun" và bấm "Chạy" (Run)
+ * để kiểm tra kết nối tới Google Sheet mà không bị báo lỗi.
+ */
+function testRun() {
+  try {
+    var ss = getSpreadsheet();
+    Logger.log("==================================================");
+    Logger.log("✅ KẾT NỐI GOOGLE SHEET THÀNH CÔNG!");
+    Logger.log("📄 Tên file Sheet: " + ss.getName());
+    Logger.log("🔗 Đường dẫn Sheet: " + ss.getUrl());
+    
+    // Khởi tạo các sheet mẫu
+    var sheet = getOrCreateSheet(ss, "Cài đặt Nhà trường");
+    Logger.log("✅ Đã kiểm tra sheet: " + sheet.getName());
+    Logger.log("==================================================");
+    Logger.log("🎉 TẤT CẢ ĐÃ SẴN SÀNG!");
+    Logger.log("👉 BÂY GIỜ BẠN HÃY: Bấm 'Triển khai' (Deploy) -> 'Tùy chọn triển khai mới' (New deployment) -> 'Ứng dụng web' (Web App).");
+  } catch (err) {
+    Logger.log("❌ LỖI KHI CHẠY THỬ: " + err.toString());
+  }
+}
+
+/**
+ * Xử lý GET request (Kiểm tra trạng thái Webhook từ xa)
  */
 function doGet(e) {
   try {
-    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var ss = getSpreadsheet();
     return createJsonResponse({
       status: "ok",
       service: "OneSchool AI Apps Script Connector",
@@ -29,14 +58,18 @@ function doGet(e) {
  */
 function doPost(e) {
   try {
+    // Nếu bấm nút "Chạy" trực tiếp trên giao diện Apps Script, e sẽ bị undefined
     if (!e || !e.postData || !e.postData.contents) {
-      return createJsonResponse({ success: false, message: "Không tìm thấy dữ liệu POST" });
+      return createJsonResponse({ 
+        success: false, 
+        message: "Hàm doPost nhận dữ liệu tự động từ OneSchool AI qua Webhook. Để thử nghiệm trực tiếp trên Apps Script, vui lòng chọn hàm 'testRun' trên thanh công cụ và bấm 'Chạy'." 
+      });
     }
 
     var requestData = JSON.parse(e.postData.contents);
     var action = requestData.action;
-    var payload = requestData.payload;
-    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var payload = requestData.payload || {};
+    var ss = getSpreadsheet();
 
     switch (action) {
       case "SYNC_INITIAL_DATA":
@@ -47,9 +80,6 @@ function doPost(e) {
 
       case "SYNC_TASK":
         return handleSyncTask(ss, payload);
-
-      case "SYNC_DOCUMENT":
-        return handleSyncDocument(ss, payload);
 
       case "UPLOAD_DOCUMENT_DRIVE":
         return handleUploadDocumentDrive(ss, payload, requestData.folderId);
@@ -69,6 +99,7 @@ function doPost(e) {
 // 1. ĐỒNG BỘ TOÀN BỘ HỒ SƠ & DỮ LIỆU BAN ĐẦU
 // -------------------------------------------------------------
 function handleSyncInitialData(ss, payload) {
+  if (!ss) ss = getSpreadsheet();
   var staffList = payload.staff || [];
   var campuses = payload.campuses || [];
   var settings = payload.settings || {};
@@ -164,10 +195,10 @@ function handleSyncInitialData(ss, payload) {
   for (var j = 0; j < campuses.length; j++) {
     var c = campuses[j];
     campusRows.push([
-      c.id,
-      c.name,
-      c.code,
-      c.address,
+      c.id || "",
+      c.name || "",
+      c.code || "",
+      c.address || "",
       (c.managerNames || []).join("; ")
     ]);
   }
@@ -175,7 +206,7 @@ function handleSyncInitialData(ss, payload) {
   formatHeaderRow(campusSheet, campusHeaders.length, "#7c3aed");
   campusSheet.autoResizeColumns(1, campusHeaders.length);
 
-  // Tạo sẵn các sheet rỗng nếu chưa có
+  // Khởi tạo các sheet cần thiết
   ensureHeaders(ss, "Nhiệm vụ", ["Mã nhiệm vụ", "Tiêu đề", "Điểm trường", "Bắt đầu", "Kết thúc", "Người phụ trách", "Trạng thái", "Phê duyệt"]);
   ensureHeaders(ss, "Văn bản & Minh chứng", ["Mã văn bản", "Số hiệu", "Tiêu đề", "Loại", "Điểm trường", "Link Google Drive", "Người tải", "Ngày tải"]);
   ensureHeaders(ss, "Nhật ký kiểm toán", ["Thời gian", "Người thực hiện", "Hành động", "Đối tượng", "Chi tiết"]);
@@ -190,6 +221,7 @@ function handleSyncInitialData(ss, payload) {
 // 2. ĐỒNG BỘ MỘT HỒ SƠ NHÂN SỰ KHI CÓ THAY ĐỔI
 // -------------------------------------------------------------
 function handleSyncStaff(ss, payload) {
+  if (!ss) ss = getSpreadsheet();
   var s = payload.staff;
   if (!s || !s.id) {
     return createJsonResponse({ success: false, message: "Thiếu dữ liệu nhân sự" });
@@ -248,6 +280,7 @@ function handleSyncStaff(ss, payload) {
 // 3. ĐỒNG BỘ NHIỆM VỤ / LỊCH CÔNG TÁC
 // -------------------------------------------------------------
 function handleSyncTask(ss, payload) {
+  if (!ss) ss = getSpreadsheet();
   var t = payload.task;
   if (!t || !t.id) return createJsonResponse({ success: false, message: "Thiếu thông tin nhiệm vụ" });
 
@@ -286,6 +319,7 @@ function handleSyncTask(ss, payload) {
 // 4. LƯU TÀI LIỆU LÊN GOOGLE DRIVE & GHI LINK VÀO GOOGLE SHEET
 // -------------------------------------------------------------
 function handleUploadDocumentDrive(ss, payload, targetFolderId) {
+  if (!ss) ss = getSpreadsheet();
   var fileName = payload.fileName || "Tai_lieu_" + Date.now();
   var mimeType = payload.mimeType || "application/octet-stream";
   var base64Data = payload.base64Data;
@@ -295,11 +329,10 @@ function handleUploadDocumentDrive(ss, payload, targetFolderId) {
     return createJsonResponse({ success: false, message: "Không có dữ liệu file base64" });
   }
 
-  // Xác định thư mục đích
   var folder;
-  if (targetFolderId) {
+  if (targetFolderId && targetFolderId.trim() !== "") {
     try {
-      folder = DriveApp.getFolderById(targetFolderId);
+      folder = DriveApp.getFolderById(targetFolderId.trim());
     } catch (e) {
       folder = getOrCreateFolder("OneSchool AI - Hồ sơ tài liệu");
     }
@@ -307,19 +340,16 @@ function handleUploadDocumentDrive(ss, payload, targetFolderId) {
     folder = getOrCreateFolder("OneSchool AI - Hồ sơ tài liệu");
   }
 
-  // Giải mã dữ liệu và tạo file
   var decodedBytes = Utilities.base64Decode(base64Data);
   var blob = Utilities.newBlob(decodedBytes, mimeType, fileName);
   var driveFile = folder.createFile(blob);
 
-  // Mở quyền xem cho bất kỳ ai có link (để xem được trực tiếp từ app)
   driveFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
 
   var fileUrl = driveFile.getUrl();
   var fileId = driveFile.getId();
   var downloadUrl = driveFile.getDownloadUrl();
 
-  // Ghi nhận vào sheet "Văn bản & Minh chứng"
   var docSheet = getOrCreateSheet(ss, "Văn bản & Minh chứng");
   ensureHeaders(ss, "Văn bản & Minh chứng", ["Mã văn bản", "Số hiệu", "Tiêu đề", "Loại", "Điểm trường", "Link Google Drive", "Người tải", "Ngày tải"]);
   
@@ -349,6 +379,7 @@ function handleUploadDocumentDrive(ss, payload, targetFolderId) {
 // 5. GHI NHẬT KÝ KIỂM TOÁN
 // -------------------------------------------------------------
 function handleLogAudit(ss, payload) {
+  if (!ss) ss = getSpreadsheet();
   var log = payload.log;
   if (!log) return createJsonResponse({ success: false });
 
@@ -369,7 +400,35 @@ function handleLogAudit(ss, payload) {
 // -------------------------------------------------------------
 // CÁC HÀM TIỆN ÍCH TRỢ GIÚP (HELPERS)
 // -------------------------------------------------------------
+
+/**
+ * Lấy đối tượng Spreadsheet an toàn (chống lỗi undefined)
+ */
+function getSpreadsheet() {
+  // 1. Kiểm tra SPREADSHEET_ID nếu có cấu hình
+  if (typeof SPREADSHEET_ID === "string" && SPREADSHEET_ID.trim() !== "") {
+    try {
+      var id = SPREADSHEET_ID.trim();
+      // Nếu người dùng lỡ dán cả link URL thay vì ID, tự động trích xuất ID
+      var match = id.match(/\/d\/([a-zA-Z0-9-_]+)/);
+      if (match) id = match[1];
+      return SpreadsheetApp.openById(id);
+    } catch (e) {
+      Logger.log("Không thể mở theo SPREADSHEET_ID: " + e.toString());
+    }
+  }
+
+  // 2. Thử lấy Active Spreadsheet (khi mở từ Tiện ích mở rộng trong Google Sheet)
+  try {
+    var activeSS = SpreadsheetApp.getActiveSpreadsheet();
+    if (activeSS) return activeSS;
+  } catch (e) {}
+
+  throw new Error("Không thể tìm thấy Google Sheet! Nếu bạn tạo script tại script.google.com, hãy mở tệp Code.gs và dán link Google Sheet vào biến SPREADSHEET_ID ở dòng 12.");
+}
+
 function getOrCreateSheet(ss, sheetName) {
+  if (!ss) ss = getSpreadsheet();
   var sheet = ss.getSheetByName(sheetName);
   if (!sheet) {
     sheet = ss.insertSheet(sheetName);
@@ -378,6 +437,7 @@ function getOrCreateSheet(ss, sheetName) {
 }
 
 function ensureHeaders(ss, sheetName, headers) {
+  if (!ss) ss = getSpreadsheet();
   var sheet = getOrCreateSheet(ss, sheetName);
   if (sheet.getLastRow() === 0) {
     sheet.appendRow(headers);
