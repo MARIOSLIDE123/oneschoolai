@@ -258,7 +258,28 @@ export const api = {
     return data.document;
   },
 
-  uploadDocumentFile: async (formData: FormData): Promise<{ document: Document; extractedTextPreview: string }> => {
+  uploadDocumentFile: async (formData: FormData): Promise<{ document: Document; extractedTextPreview: string; driveLink?: string }> => {
+    try {
+      const cfg = await api.getSyncConfig();
+      if (cfg.isConfigured) {
+        const driveRes = await fetch('/api/documents/upload-drive', {
+          method: 'POST',
+          headers: { 'x-user-uid': currentUserId },
+          body: formData,
+        });
+        const driveData = await driveRes.json();
+        if (driveData.success && driveData.document) {
+          return {
+            document: driveData.document,
+            extractedTextPreview: driveData.document.title,
+            driveLink: driveData.driveLink,
+          };
+        }
+      }
+    } catch (e) {
+      console.warn('Drive upload fallback to standard upload:', e);
+    }
+
     const res = await fetch('/api/documents/upload', {
       method: 'POST',
       headers: { 'x-user-uid': currentUserId },
@@ -401,5 +422,31 @@ export const api = {
     });
     const data = await res.json();
     return data.success;
+  },
+
+  // Google Apps Script / Sheets & Drive Sync
+  getSyncConfig: async (): Promise<{ isConfigured: boolean; webAppUrlConfigured: boolean; driveFolderConfigured: boolean; maskedUrl?: string; driveFolderId?: string }> => {
+    const res = await fetch('/api/sync/config', { headers: headers() });
+    const data = await res.json();
+    return data.config;
+  },
+
+  syncAllToGoogleSheets: async (): Promise<{ success: boolean; message: string; details?: any }> => {
+    const res = await fetch('/api/sync/all', {
+      method: 'POST',
+      headers: headers(),
+    });
+    return await res.json();
+  },
+
+  uploadDocumentToDrive: async (formData: FormData): Promise<{ success: boolean; message?: string; document?: Document; driveLink?: string }> => {
+    const res = await fetch('/api/documents/upload-drive', {
+      method: 'POST',
+      headers: {
+        'x-user-uid': currentUserId,
+      },
+      body: formData,
+    });
+    return await res.json();
   },
 };

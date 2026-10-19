@@ -4,6 +4,7 @@ import * as XLSX from 'xlsx';
 import { db } from '../services/db.js';
 import { extractTasksFromDocumentText, answerSchoolAssistantQuery, explainConflictWithAI } from '../services/aiService.js';
 import { parseSchoolExcelWorkbook } from '../services/excelService.js';
+import { googleSyncService } from '../services/googleSyncService.js';
 import { User, UserRole, Task, Staff } from '../../src/types/index.js';
 
 const router = express.Router();
@@ -503,6 +504,97 @@ router.post('/system/clear-demo', (req: Request, res: Response) => {
   const actor = getActor(req);
   db.clearAllDemoData(actor);
   res.json({ success: true, message: 'Đã dọn dẹp toàn bộ dữ liệu demo thành công' });
+});
+
+// 15. GOOGLE APPS SCRIPT / GOOGLE SHEETS & DRIVE SYNC
+router.get('/sync/config', (req: Request, res: Response) => {
+  res.json({ success: true, config: googleSyncService.getConfig() });
+});
+
+router.post('/sync/all', async (req: Request, res: Response) => {
+  const actor = getActor(req);
+  if (actor.role !== 'principal' && actor.role !== 'vice_principal' && actor.role !== 'clerk') {
+    return res.status(403).json({ success: false, message: 'Chỉ Ban Giám hiệu hoặc Văn thư mới có quyền đồng bộ Google Sheets.' });
+  }
+
+  const staff = db.getStaff();
+  const campuses = db.getCampuses();
+  const settings = db.getSettings();
+  const tasks = db.getTasks();
+  const documents = db.getDocuments();
+
+  const result = await googleSyncService.syncAll({
+    staff,
+    campuses,
+    settings,
+    tasks,
+    documents,
+  });
+
+  if (result.success) {
+    db.logAction(actor.uid, actor.name, actor.role, 'SYNC_GOOGLE_SHEETS', 'integration', 'all', 'Đồng bộ toàn bộ dữ liệu lên Google Sheets thành công');
+  }
+
+  res.json(result);
+});
+
+router.post('/documents/upload-drive', upload.single('file'), async (req: Request, res: Response) => {
+  const actor = getActor(req);
+  const file = req.file;
+
+  if (!file) {
+    return res.status(400).json({ success: false, message: 'Vui lòng chọn file tài liệu cần tải lên.' });
+  }
+
+  const { title, documentNumber, category, campusId, campusName } = req.body;
+
+  try {
+    const driveResult = await googleSyncService.uploadDocumentToDrive(
+      file.originalname,
+      file.mimetype,
+      file.buffer,
+      {
+        title: title || file.originalname,
+        documentNumber: documentNumber || '',
+        category: category || 'Kế hoạch',
+        campusId: campusId || 'CAMPUS-MAIN',
+        campusName: campusName || 'Trường chính',
+        uploadedByName: actor.name,
+      }
+    );
+
+    if (!driveResult.success) {
+      return res.status(500).json({ success: false, message: driveResult.message });
+    }
+
+    const doc = db.createDocument({
+      title: title || file.originalname,
+      documentNumber: documentNumber || '',
+      documentType: (category as any) || 'other',
+      fileName: file.originalname,
+      contentType: file.mimetype,
+      campusIds: [campusId || 'CAMPUS-MAIN'],
+      validFrom: new Date().toISOString().split('T')[0],
+      validTo: new Date(Date.now() + 365 * 86400000).toISOString().split('T')[0],
+      approvalStatus: 'approved',
+      fileUrl: driveResult.webViewLink || '',
+      fileSize: file.size,
+      uploadedBy: actor.uid,
+      uploadedByName: actor.name,
+      processingStatus: 'uploaded',
+      extractedTaskCount: 0,
+    }, actor);
+
+    res.status(201).json({
+      success: true,
+      message: 'Tải tài liệu lên Google Drive thành công!',
+      document: doc,
+      driveLink: driveResult.webViewLink,
+    });
+  } catch (err: any) {
+    console.error('Error uploading to Drive:', err);
+    res.status(500).json({ success: false, message: err.message || 'Lỗi tải lên Google Drive' });
+  }
 });
 
 export default router;

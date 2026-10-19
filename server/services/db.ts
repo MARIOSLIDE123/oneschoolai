@@ -27,6 +27,7 @@ import {
   initialAuditLogs 
 } from '../data/initialData.js';
 import { detectConflicts } from './conflictEngine.js';
+import { googleSyncService } from './googleSyncService.js';
 
 export interface DatabaseStore {
   campuses: Campus[];
@@ -200,6 +201,7 @@ class SchoolDatabase {
       this.store.auditLogs = this.store.auditLogs.slice(0, 500);
     }
     this.save();
+    googleSyncService.syncAuditLog(log);
   }
 
   // 1. CAMPUSES
@@ -328,6 +330,7 @@ class SchoolDatabase {
     this.store.staff[idx] = updated;
     this.logAction(actor.uid, actor.name, actor.role, 'UPDATE_STAFF', 'staff', id, `Cập nhật hồ sơ nhân sự "${updated.fullName}" (${id})`, before, updated);
     this.save();
+    googleSyncService.syncStaff(updated, 'update');
     return updated;
   }
 
@@ -351,6 +354,7 @@ class SchoolDatabase {
     staff.updatedAt = new Date().toISOString();
     this.logAction(actor.uid, actor.name, actor.role, 'VERIFY_STAFF', 'staff', id, `Xác minh hồ sơ "${staff.fullName}": ${decision}. Ghi chú: ${note}`, before, staff);
     this.save();
+    googleSyncService.syncStaff(staff, 'verify');
     return staff;
   }
 
@@ -499,6 +503,7 @@ class SchoolDatabase {
     this.recalculateConflicts();
     this.logAction(actor.uid, actor.name, actor.role, 'CREATE_TASK', 'task', newTask.id, `Tạo mới nhiệm vụ: "${newTask.title}" (${newTask.campusName})`, null, newTask);
     this.save();
+    googleSyncService.syncTask(newTask, 'create');
     return newTask;
   }
 
@@ -521,6 +526,7 @@ class SchoolDatabase {
     this.recalculateConflicts();
     this.logAction(actor.uid, actor.name, actor.role, 'UPDATE_TASK', 'task', id, `Cập nhật nhiệm vụ: "${updated.title}"`, before, updated);
     this.save();
+    googleSyncService.syncTask(updated, 'update');
     return updated;
   }
 

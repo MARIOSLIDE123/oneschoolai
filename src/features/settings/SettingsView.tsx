@@ -10,7 +10,13 @@ import {
   Save,
   Server,
   Building,
-  Award
+  Award,
+  FileSpreadsheet,
+  Cloud,
+  UploadCloud,
+  ExternalLink,
+  AlertCircle,
+  RefreshCw
 } from 'lucide-react';
 import { api } from '../../services/api.js';
 
@@ -28,9 +34,41 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onRefresh }) => {
   const [isSaved, setIsSaved] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
+  // Google Sheets / Drive Sync State
+  const [syncConfig, setSyncConfig] = useState<{ isConfigured: boolean; webAppUrlConfigured: boolean; driveFolderConfigured: boolean; maskedUrl?: string; driveFolderId?: string } | null>(null);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncMessage, setSyncMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
   useEffect(() => {
     loadSettings();
+    loadSyncConfig();
   }, []);
+
+  const loadSyncConfig = async () => {
+    try {
+      const cfg = await api.getSyncConfig();
+      setSyncConfig(cfg);
+    } catch (err) {
+      console.error('Error loading sync config:', err);
+    }
+  };
+
+  const handleSyncAllToGoogleSheets = async () => {
+    try {
+      setIsSyncing(true);
+      setSyncMessage(null);
+      const res = await api.syncAllToGoogleSheets();
+      if (res.success) {
+        setSyncMessage({ type: 'success', text: res.message || 'Đồng bộ toàn bộ 112 hồ sơ và dữ liệu nhà trường lên Google Sheets thành công!' });
+      } else {
+        setSyncMessage({ type: 'error', text: res.message || 'Không thể đồng bộ. Vui lòng kiểm tra cấu hình Apps Script.' });
+      }
+    } catch (err: any) {
+      setSyncMessage({ type: 'error', text: err.message || 'Lỗi khi gọi API đồng bộ Google Sheets' });
+    } finally {
+      setIsSyncing(false);
+    }
+  };
 
   const loadSettings = async () => {
     try {
@@ -195,6 +233,82 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onRefresh }) => {
           </button>
         </div>
       </form>
+
+      {/* Google Sheets & Google Drive Cloud Sync */}
+      <div className="bg-white p-6 rounded-2xl border border-[#E2E8F0] shadow-xs space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b pb-3">
+          <div className="flex items-center gap-2">
+            <FileSpreadsheet className="w-5 h-5 text-emerald-600" />
+            <div>
+              <h3 className="text-sm font-bold text-[#172B4D]">
+                Đồng bộ Google Sheets & Google Drive qua Google Apps Script
+              </h3>
+              <p className="text-[11px] text-slate-500">
+                Tự động lưu trữ hồ sơ, lịch công tác và tải minh chứng/tài liệu lên Google Drive
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            {syncConfig?.isConfigured ? (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                Đã kết nối Apps Script
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+                <AlertCircle className="w-3.5 h-3.5" />
+                Chưa cấu hình URL
+              </span>
+            )}
+          </div>
+        </div>
+
+        {syncMessage && (
+          <div className={`p-3 rounded-xl text-xs flex items-center gap-2 ${
+            syncMessage.type === 'success' ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' : 'bg-rose-50 text-rose-800 border border-rose-200'
+          }`}>
+            {syncMessage.type === 'success' ? <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" /> : <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />}
+            <span>{syncMessage.text}</span>
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-1">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Google Sheets Webhook</span>
+            <p className="text-xs font-semibold text-slate-800 font-mono truncate">
+              {syncConfig?.maskedUrl || 'Chưa thiết lập GOOGLE_APPS_SCRIPT_URL'}
+            </p>
+          </div>
+          <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-1">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Thư mục Google Drive</span>
+            <p className="text-xs font-semibold text-slate-800 font-mono truncate">
+              {syncConfig?.driveFolderId ? `Folder ID: ${syncConfig.driveFolderId}` : 'Mặc định: OneSchool AI - Hồ sơ tài liệu'}
+            </p>
+          </div>
+          <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-1">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Chế độ đồng bộ</span>
+            <p className="text-xs font-semibold text-slate-800 flex items-center gap-1">
+              <Cloud className="w-3.5 h-3.5 text-blue-600" />
+              Tự động khi có cập nhật dữ liệu
+            </p>
+          </div>
+        </div>
+
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2">
+          <p className="text-[11px] text-slate-500">
+            Mã nguồn Apps Script nằm tại thư mục <code className="px-1.5 py-0.5 bg-slate-100 rounded text-slate-700 font-mono text-[10px]">google_apps_script/Code.gs</code>.
+          </p>
+          <button
+            type="button"
+            onClick={handleSyncAllToGoogleSheets}
+            disabled={isSyncing}
+            className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-semibold rounded-lg shadow-xs transition-colors shrink-0"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
+            <span>{isSyncing ? 'Đang đồng bộ lên Google Sheets...' : 'Đồng bộ toàn bộ dữ liệu lên Google Sheets'}</span>
+          </button>
+        </div>
+      </div>
 
       {/* Database & Data Management */}
       <div className="bg-white p-6 rounded-2xl border border-[#E2E8F0] shadow-xs space-y-4">

@@ -294,6 +294,8 @@ export interface Document {
   approvalStatus: ApprovalStatus;
   extractedTaskCount: number;
   rawTextPreview?: string;
+  fileUrl?: string;
+  documentNumber?: string;
   isDemo?: boolean;
   updatedAt: string;
 }
