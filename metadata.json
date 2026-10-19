@@ -1,0 +1,7 @@
+{
+  "name": "OneSchool AI - Hệ thống Quản trị Nhà trường",
+  "description": "Một nhà trường, một chuẩn quản trị. Quản lý hai điểm trường, tài liệu kế hoạch, lịch công tác, nhiệm vụ, phát hiện xung đột và trợ lý BGH AI.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+
